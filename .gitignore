@@ -1,0 +1,24 @@
+# 密钥文件（绝对不能上传！）
+.env
+
+# Python缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 向量库、上传文件（本地数据，不上传）
+fronted/local_rag/data/faiss_index/
+fronted/local_rag/data/uploads/
+
+# IDE配置
+.vscode/
+.idea/
+
+# Mac系统垃圾文件
+.DS_Store

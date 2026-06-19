@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>RAG知识库 + AI聊天助手</title>
+<style>
+*{box-sizing: border-box;font-family: system-ui, -apple-system, "PingFang SC", sans-serif;}
+body{max-width:680px;margin:30px auto;padding:0 20px;background:#f7f7f8;}
+.box{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:18px 22px;margin-bottom:16px;}
+h2{margin-bottom:4px;}
+h3{margin-top:0;color:#222;font-size:15px;}
+input[type="file"]{padding:6px;}
+button{padding:7px 16px;border:none;border-radius:6px;cursor:pointer;background:#2563eb;color:#fff;font-size:14px;}
+button:hover{opacity:0.9;}
+.del-btn{background:#dc2626;}
+.ghost-btn{background:#fff;color:#555;border:1px solid #ddd;}
+#upTip{margin-top:10px;color:#c02626;font-size:13px;}
+
+#chatBox{height:380px;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:14px;background:#fafafa;margin-bottom:10px;}
+.msg{margin-bottom:14px;display:flex;}
+.msg.user{justify-content:flex-end;}
+.bubble{max-width:78%;padding:9px 13px;border-radius:10px;font-size:14px;line-height:1.55;white-space:pre-wrap;}
+.user .bubble{background:#2563eb;color:#fff;border-radius:10px 10px 2px 10px;}
+.assistant .bubble{background:#fff;border:1px solid #e5e7eb;border-radius:10px 10px 10px 2px;}
+.sources{font-size:12px;color:#888;margin-top:6px;}
+
+.inputRow{display:flex;gap:8px;}
+#qInput{flex:1;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:none;height:46px;}
+.topRow{display:flex;justify-content:space-between;align-items:center;}
+</style>
+</head>
+<body>
+<h2>RAG知识库 + AI聊天助手</h2>
+
+<div class="box">
+    <h3>① 上传文档入库（可选，没有文档也能正常聊天）</h3>
+    <input type="file" id="fileInput">
+    <button onclick="uploadFile()">确认上传</button>
+    <div id="upTip"></div>
+</div>
+
+<div class="box">
+    <div class="topRow">
+        <h3>② 对话</h3>
+        <div>
+            <button class="ghost-btn" onclick="clearHistory()">清空对话记忆</button>
+            <button class="del-btn" onclick="resetKB()">清空知识库</button>
+        </div>
+    </div>
+    <div id="chatBox"></div>
+    <div class="inputRow">
+        <textarea id="qInput" placeholder="输入你的问题，回车发送..."></textarea>
+        <button onclick="askQ()">发送</button>
+    </div>
+</div>
+
+<script>
+const baseUrl = "http://127.0.0.1:8000/api";
+// 简单生成一个会话ID，刷新页面后保持不变（同一浏览器标签内记忆连续）
+const sessionId = localStorage.getItem("rag_session_id") || (() => {
+    const id = "s_" + Math.random().toString(36).slice(2);
+    localStorage.setItem("rag_session_id", id);
+    return id;
+})();
+
+const chatBox = document.getElementById("chatBox");
+
+function appendMsg(role, text, sources) {
+    const wrap = document.createElement("div");
+    wrap.className = "msg " + role;
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.innerText = text;
+    if (sources && sources.length) {
+        const src = document.createElement("div");
+        src.className = "sources";
+        src.innerText = "📎 参考了知识库中 " + sources.length + " 段相关内容";
+        bubble.appendChild(src);
+    }
+    wrap.appendChild(bubble);
+    chatBox.appendChild(wrap);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+async function uploadFile(){
+    const dom = document.getElementById('fileInput')
+    if(!dom.files[0]){
+        document.getElementById('upTip').innerText = "请先选择文档"
+        return
+    }
+    let fd = new FormData()
+    fd.append("file", dom.files[0])
+    try{
+        let res = await fetch(`${baseUrl}/upload`,{method:"POST",body:fd})
+        let d = await res.json()
+        if(res.ok){
+            document.getElementById('upTip').style.color="#16a34a"
+            document.getElementById('upTip').innerText = "✅ 文档入库成功：" + d.filename + "（共" + d.chunk_count + "段）"
+        }else{
+            document.getElementById('upTip').style.color="#c02626"
+            document.getElementById('upTip').innerText = "❌ " + d.detail
+        }
+    }catch(e){
+        document.getElementById('upTip').innerText = "❌ 接口连接失败"
+    }
+}
+
+async function askQ(){
+    const input = document.getElementById("qInput")
+    let q = input.value.trim()
+    if(!q){return}
+    appendMsg("user", q)
+    input.value = ""
+
+    const loadingBubble = document.createElement("div")
+    loadingBubble.className = "msg assistant"
+    loadingBubble.innerHTML = '<div class="bubble">思考中...</div>'
+    chatBox.appendChild(loadingBubble)
+    chatBox.scrollTop = chatBox.scrollHeight
+
+    try{
+        let res = await fetch(`${baseUrl}/ask`,{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({question: q, session_id: sessionId})
+        })
+        let json = await res.json()
+        loadingBubble.remove()
+        if(res.ok){
+            appendMsg("assistant", json.answer, json.sources)
+        }else{
+            appendMsg("assistant", "❌ " + json.detail)
+        }
+    }catch(e){
+        loadingBubble.remove()
+        appendMsg("assistant", "❌ 接口连接失败")
+    }
+}
+
+document.getElementById("qInput").addEventListener("keydown", function(e){
+    if(e.key === "Enter" && !e.shiftKey){
+        e.preventDefault()
+        askQ()
+    }
+})
+
+async function resetKB(){
+    if(!confirm("确定清空全部知识库文档？无法恢复！")) return
+    let res = await fetch(`${baseUrl}/reset`,{method:"DELETE"})
+    let d = await res.json()
+    alert(d.message || "清空完成")
+}
+
+async function clearHistory(){
+    await fetch(`${baseUrl}/clear_history`,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({session_id: sessionId})
+    })
+    chatBox.innerHTML = ""
+    appendMsg("assistant", "对话记忆已清空，我们重新开始吧～")
+}
+</script>
+</body>
+</html>

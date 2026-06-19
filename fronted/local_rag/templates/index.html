@@ -1,0 +1,78 @@
+ <!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>AI RAG Chat</title>
+
+<style>
+body {
+    font-family: Arial;
+    max-width: 800px;
+    margin: 20px auto;
+}
+
+#chat {
+    border: 1px solid #ddd;
+    padding: 10px;
+    height: 400px;
+    overflow-y: auto;
+}
+
+.msg { margin: 8px 0; }
+.user { color: blue; }
+.ai { color: green; }
+</style>
+</head>
+
+<body>
+
+<h2>🤖 AI助手</h2>
+
+<div id="chat"></div>
+
+<input id="input" style="width:80%" placeholder="请输入问题">
+<button onclick="send()">发送</button>
+
+<script>
+const chat = document.getElementById("chat");
+
+function add(role, text){
+    const div = document.createElement("div");
+    div.className = role;
+    div.innerText = role + ": " + text;
+    chat.appendChild(div);
+}
+
+async function send(){
+    const input = document.getElementById("input");
+    const text = input.value;
+
+    add("user", text);
+    input.value = "";
+
+    const loading = document.createElement("div");
+    loading.id = "loading";
+    loading.innerText = "AI正在思考...";
+    chat.appendChild(loading);
+
+    try {
+        const res = await fetch("http://127.0.0.1:8000/ask", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({question: text})
+        });
+
+        const data = await res.json();
+
+        document.getElementById("loading").remove();
+        add("ai", data.answer);
+
+    } catch (e) {
+        document.getElementById("loading").remove();
+        add("ai", "错误: " + e);
+    }
+}
+</script>
+
+</body>
+</html>
